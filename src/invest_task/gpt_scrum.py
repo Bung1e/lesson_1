@@ -61,9 +61,7 @@ def get_gpt_response(prompt):
     )
     
     return {
-        "response": response.choices[0].message.content,
-        "input_tokens": response.usage.prompt_tokens,
-        "output_tokens": response.usage.completion_tokens
+        "response": response.choices[0].message.content
     }
 
 def save_response_to_file(response, filename):
