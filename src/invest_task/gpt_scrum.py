@@ -72,8 +72,8 @@ def save_response_to_file(response, filename):
         response (dict): The response from GPT
         filename (str): The filename to save to
     """
-    os.makedirs("backlogs", exist_ok=True)
-    with open(f"backlogs/{filename}", "w", encoding="utf-8") as f:
+    os.makedirs("backlog", exist_ok=True)
+    with open(f"backlog/{filename}", "w", encoding="utf-8") as f:
         f.write(response["response"])
 
 def main():
