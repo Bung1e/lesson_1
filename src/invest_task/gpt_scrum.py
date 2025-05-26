@@ -40,7 +40,7 @@ focus on these areas:
 def get_gpt_response(prompt):
     """
     get response from GPT model.
-    
+
     args:
         prompt (str): The prompt to send to GPT
         model (str): The model to use
@@ -81,7 +81,7 @@ def save_response_to_file(response, filename):
 def main():
     """generate user stories and save them to a file."""
     response = get_gpt_response(USER_STORY_PROMPT)
-    save_response_to_file(response, "sentiment_analysis_stories.md")
+    save_response_to_file(response, "sprint1.md")
 
 if __name__ == "__main__":
     main() 
