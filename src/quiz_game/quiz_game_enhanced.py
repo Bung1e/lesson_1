@@ -1,12 +1,14 @@
 import os
+import json
+from typing import Dict, List
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
 from rich.table import Table
-from rich import print as rprint
 import time
+
 
 load_dotenv()
 console = Console()
@@ -17,28 +19,50 @@ client = AzureOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
 )
 
-def get_quiz_question():
-    with open("prompts/best.txt", "r") as f:
-        prompt = f.read()
-    
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=500,
-        temperature=0.7
-    )
-    
-    return response.choices[0].message.content
+def get_quiz_questions(total_questions: int = 5) -> List[Dict]:
+    prompt = """Generate a quiz with {total_questions} questions in the following JSON format:
+{{
+    "questions": [
+        {{
+            "question": "The question text",
+            "options": {{
+                "A": "Option A text",
+                "B": "Option B text",
+                "C": "Option C text",
+                "D": "Option D text"
+            }},
+            "correct_answer": "A/B/C/D",
+            "explanation": "Brief explanation of why this is the correct answer"
+        }}
+    ]
+}}
 
-def parse_question(question_text):
-    parts = question_text.split("Correct Answer: ")
-    question_part = parts[0].strip()
-    correct_answer = parts[1].strip() if len(parts) > 1 else ""
-    lines = question_part.split('\n')
-    question = lines[0].strip()
-    options = [line.strip() for line in lines[1:] if line.strip()]
-    
-    return question, options, correct_answer
+Requirements:
+1. Each question should be challenging but fair
+2. All options should be plausible
+3. The explanation should be educational
+4. The response must be valid JSON
+5. Only one option should be correct
+6. Questions should be diverse and cover different topics
+7. Each question should have a clear and unambiguous correct answer""".format(total_questions=total_questions)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a quiz generator that creates educational questions."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+        
+        questions_data = json.loads(response.choices[0].message.content)
+        return questions_data["questions"]
+        
+    except Exception as e:
+        raise
 
 def display_welcome():
     console.print(Panel.fit(
@@ -48,9 +72,9 @@ def display_welcome():
         border_style="blue"
     ))
 
-def display_question(question_number, question, options):
+def display_question(question_number: int, question: Dict):
     console.print(Panel(
-        f"[bold green]Question {question_number}[/bold green]\n\n{question}",
+        f"[bold green]Question {question_number}[/bold green]\n\n{question['question']}",
         title="📝 Question",
         border_style="green"
     ))
@@ -59,11 +83,11 @@ def display_question(question_number, question, options):
     table.add_column("Option", style="cyan")
     table.add_column("Answer", style="white")
     
-    for option in options:
-        table.add_row(option[0], option[2:])
+    for option, text in question['options'].items():
+        table.add_row(option, text)
     console.print(table)
 
-def display_score(score, total):
+def display_score(score: int, total: int):
     percentage = (score/total)*100
     console.print(Panel(
         f"[bold yellow]Score: {score}/{total}[/bold yellow]\n"
@@ -77,52 +101,59 @@ def play_quiz():
     questions = 5
     display_welcome()
     
-    for i in range(questions):
-        question_text = get_quiz_question()
-        question, options, correct_answer = parse_question(question_text)
-        display_question(i+1, question, options)
+    try:
+        quiz_questions = get_quiz_questions(questions)
         
-        while True:
-            user_answer = Prompt.ask(
-                "\nYour answer",
-                choices=["A", "B", "C", "D"]
-            ).upper()
+        for i, question in enumerate(quiz_questions, 1):
+            display_question(i, question)
             
-            if user_answer in ['A', 'B', 'C', 'D']:
-                break
-            console.print("[red]Please enter A, B, C, or D[/red]")
-        console.print("\n[bold]Correct Answer:[/bold]")
-        console.print(Panel(
-            f"[bold]{correct_answer}[/bold]",
-            border_style="blue"
-        ))
+            while True:
+                user_answer = Prompt.ask(
+                    "\nYour answer",
+                    choices=["A", "B", "C", "D"]
+                ).upper()
+                
+                if user_answer in ['A', 'B', 'C', 'D']:
+                    break
+                console.print("[red]Please enter A, B, C, or D[/red]")
+            
+            console.print("\n[bold]Correct Answer:[/bold]")
+            console.print(Panel(
+                f"[bold]{question['correct_answer']}[/bold]\n"
+                f"[italic]{question['explanation']}[/italic]",
+                border_style="blue"
+            ))
+            
+            if user_answer == question['correct_answer']:
+                console.print("[green]Correct! 🎉[/green]")
+                score += 1
+            else:
+                console.print("[red]Wrong! 😢[/red]")
+            
+            display_score(score, i)
+            time.sleep(1)
         
-        if user_answer == correct_answer:
-            console.print("[green]Correct! 🎉[/green]")
-            score += 1
+        table = Table(title="Final Results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="magenta")
+        table.add_row("Total Questions", str(questions))
+        table.add_row("Correct Answers", str(score))
+        table.add_row("Percentage", f"{(score/questions)*100:.1f}%")
+        
+        console.print("\n")
+        console.print(table)
+        
+        if score == questions:
+            console.print("[bold green]Perfect Score! You're a genius! 🌟[/bold green]")
+        elif score >= questions * 0.8:
+            console.print("[bold yellow]Great job! You're really smart! 🎯[/bold yellow]")
+        elif score >= questions * 0.6:
+            console.print("[bold blue]Good effort! Keep learning! 📚[/bold blue]")
         else:
-            console.print("[red]Wrong! 😢[/red]")
-        display_score(score, i+1)
-        time.sleep(1)
-    
-    table = Table(title="Final Results")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", style="magenta")
-    table.add_row("Total Questions", str(questions))
-    table.add_row("Correct Answers", str(score))
-    table.add_row("Percentage", f"{(score/questions)*100:.1f}%")
-    
-    console.print("\n")
-    console.print(table)
-    
-    if score == questions:
-        console.print("[bold green]Perfect Score! You're a genius! 🌟[/bold green]")
-    elif score >= questions * 0.8:
-        console.print("[bold yellow]Great job! You're really smart! 🎯[/bold yellow]")
-    elif score >= questions * 0.6:
-        console.print("[bold blue]Good effort! Keep learning! 📚[/bold blue]")
-    else:
-        console.print("[bold red]Keep practicing! You'll get better! 💪[/bold red]")
+            console.print("[bold red]Keep practicing! You'll get better! 💪[/bold red]")
+            
+    except Exception as e:
+        console.print("[bold red]An error occurred during the quiz. Please try again later.[/bold red]")
 
 if __name__ == "__main__":
     play_quiz() 
