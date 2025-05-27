@@ -19,7 +19,7 @@ client = AzureOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
 )
 
-def get_quiz_questions(total_questions: int = 5) -> List[Dict]:
+def get_quiz_questions(total_questions = 5):
     prompt = """Generate a quiz with {total_questions} questions in the following JSON format:
 {{
     "questions": [
@@ -72,7 +72,7 @@ def display_welcome():
         border_style="blue"
     ))
 
-def display_question(question_number: int, question: Dict):
+def display_question(question_number, question):
     console.print(Panel(
         f"[bold green]Question {question_number}[/bold green]\n\n{question['question']}",
         title="📝 Question",
@@ -87,7 +87,7 @@ def display_question(question_number: int, question: Dict):
         table.add_row(option, text)
     console.print(table)
 
-def display_score(score: int, total: int):
+def display_score(score, total):
     percentage = (score/total)*100
     console.print(Panel(
         f"[bold yellow]Score: {score}/{total}[/bold yellow]\n"
