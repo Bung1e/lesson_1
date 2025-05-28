@@ -1,0 +1,11 @@
+azure-functions
+python-dotenv
+langchain-openai
+langchain-community
+langchain-core
+langchain
+openai
+azure-search-documents
+pytest
+pytest-cov
+requests
