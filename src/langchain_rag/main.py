@@ -30,13 +30,13 @@ class SimpleTravelRAG:
             api_version="2024-02-01",
             azure_endpoint=os.getenv("OPENAI_ENDPOINT"),
             api_key=os.getenv("OPENAI_API_KEY"),
-            temperature=0.7
+            temperature=0.2
         )
         
         # Setup search retriever
         self.retriever = AzureAISearchRetriever(
             service_name=os.getenv("SEARCH_ENDPOINT"),
-            index_name=os.getenv("INDEX_NAME"),
+            index_name=os.getenv("NEW_INDEX_NAME"),
             api_key=os.getenv("SEARCH_KEY"),
             content_key=os.getenv("CONTENT_KEY", "content"),
             top_k=3
