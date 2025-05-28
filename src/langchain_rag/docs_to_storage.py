@@ -76,7 +76,6 @@ class DocumentUploader:
         try:
             existing_indexes = [idx.name for idx in self.index_client.list_indexes()]
             if self.index_name in existing_indexes:
-                logger.info(f"Индекс {self.index_name} уже существует")
                 return
             
             fields = [
@@ -244,7 +243,7 @@ class DocumentUploader:
             json.dump(stats, f, ensure_ascii=False, indent=2)
 
 def main():
-    documents_folder = "src\langchain_rag\docs"
+    documents_folder = r"src\langchain_rag\docs"
     
     try:
         uploader = DocumentUploader()
