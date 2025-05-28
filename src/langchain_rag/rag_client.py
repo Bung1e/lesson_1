@@ -1,11 +1,7 @@
-# src/langchain_rag/rag_client.py
 import requests
 import json
 import sys
 
-# Endpoint URL for your Azure Function
-# Make sure your Azure Function emulator (Azure Functions Core Tools) is running locally
-# or replace this with the actual deployed function URL
 AZURE_FUNCTION_ENDPOINT = "http://localhost:7071/api/ask"
 
 def ask_rag_endpoint(question: str):
@@ -16,20 +12,16 @@ def ask_rag_endpoint(question: str):
         question: The question string to send.
     """
     try:
-        # Using GET request as per your example
         params = {"question": question}
         
         print(f"Sending question: \"{question}\" to {AZURE_FUNCTION_ENDPOINT}")
 
         response = requests.get(AZURE_FUNCTION_ENDPOINT, params=params)
 
-        # Check if the request was successful
         response.raise_for_status() 
 
-        # Parse the JSON response
         response_data = response.json()
 
-        # Print the answer
         if response_data.get("status") == "error":
              print(f"Error from endpoint: {response_data.get('error')}")
         else:
@@ -46,13 +38,10 @@ def ask_rag_endpoint(question: str):
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
-    # Example usage
     if len(sys.argv) > 1:
-        # If question provided as command line argument
         question = " ".join(sys.argv[1:])
         ask_rag_endpoint(question)
     else:
-        # Interactive mode
         print("Enter your questions (type 'quit' to exit):")
         while True:
             user_question = input("\nYour question: ").strip()
