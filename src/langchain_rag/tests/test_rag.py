@@ -31,7 +31,6 @@ def test_ask_rag_post_request():
         assert response_data["status"] == "success"
         assert "travel" in response_data["answer"]
 
-
 def test_ask_rag_missing_question():
 
     req_body = json.dumps({})
