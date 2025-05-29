@@ -1,4 +1,6 @@
 azure-functions
+azure-identity
+azure-core
 python-dotenv
 langchain-openai
 langchain-community
@@ -10,3 +12,9 @@ pytest
 pytest-cov
 requests
 streamlit
+PyPDF2
+pypdf
+python-docx
+docx2txt
+unstructured
+unstructured[md]

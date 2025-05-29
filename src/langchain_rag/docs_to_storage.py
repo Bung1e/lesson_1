@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -29,53 +30,61 @@ from azure.search.documents.indexes.models import (
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/document_uploader.log'),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-class DocumentUploader:
+class EnhancedDocumentUploader:
     def __init__(self):
         load_dotenv()
         self._setup_components()
         
     def _setup_components(self):
-        self.embeddings = AzureOpenAIEmbeddings(
-            azure_deployment=os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002"),
-            api_version="2024-02-01",
-            azure_endpoint=os.getenv("OPENAI_ENDPOINT"),
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
-        
-        self.search_endpoint = os.getenv("SEARCH_ENDPOINT")
-        self.search_key = os.getenv("SEARCH_KEY")
-        self.index_name = os.getenv("NEW_INDEX_NAME")
-        
-        credential = AzureKeyCredential(self.search_key)
-        self.search_client = SearchClient(
-            endpoint=self.search_endpoint,
-            index_name=self.index_name,
-            credential=credential
-        )
-        self.index_client = SearchIndexClient(
-            endpoint=self.search_endpoint,
-            credential=credential
-        )
-        
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""]
-        )
+        """Initialize Azure components and configurations"""
+        try:
+            self.embeddings = AzureOpenAIEmbeddings(
+                azure_deployment=os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002"),
+                api_version="2024-02-01",
+                azure_endpoint=os.getenv("OPENAI_ENDPOINT"),
+                api_key=os.getenv("OPENAI_API_KEY")
+            )
+            
+            self.search_endpoint = os.getenv("SEARCH_ENDPOINT")
+            self.search_key = os.getenv("SEARCH_KEY")
+            self.index_name = os.getenv("NEW_INDEX_NAME")
+            
+            if not all([self.search_endpoint, self.search_key, self.index_name]):
+                raise ValueError("Missing Azure Search configuration")
+            
+            credential = AzureKeyCredential(self.search_key)
+            self.search_client = SearchClient(
+                endpoint=self.search_endpoint,
+                index_name=self.index_name,
+                credential=credential
+            )
+            self.index_client = SearchIndexClient(
+                endpoint=self.search_endpoint,
+                credential=credential
+            )
+            
+            self.text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                length_function=len,
+                separators=["\n\n", "\n", " ", ""]
+            )
+            
+            logger.info("Document uploader components initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize components: {e}")
+            raise
         
     def create_search_index(self):
         try:
             existing_indexes = [idx.name for idx in self.index_client.list_indexes()]
             if self.index_name in existing_indexes:
+                logger.info(f"Index {self.index_name} already exists")
                 return
             
             fields = [
@@ -115,10 +124,10 @@ class DocumentUploader:
             )
             
             self.index_client.create_index(index)
-            logger.info(f"Index {self.index_name} created")
+            logger.info(f"Index {self.index_name} created successfully")
             
         except Exception as e:
-            logger.error(f"Error when creating the index: {e}")
+            logger.error(f"Error creating index: {e}")
             raise
     
     def load_documents(self, documents_path: str) -> List[Dict[str, Any]]:
@@ -126,7 +135,7 @@ class DocumentUploader:
         documents_path = Path(documents_path)
         
         if not documents_path.exists():
-            raise FileNotFoundError(f"Folder {documents_path} not found")
+            raise FileNotFoundError(f"Path {documents_path} not found")
         
         file_loaders = {
             '.pdf': PyPDFLoader,
@@ -135,6 +144,8 @@ class DocumentUploader:
             '.md': UnstructuredMarkdownLoader
         }
         
+
+        processed_files = 0
         for file_path in documents_path.rglob('*'):
             if file_path.is_file() and file_path.suffix.lower() in file_loaders:
                 try:
@@ -150,107 +161,123 @@ class DocumentUploader:
                             'title': file_path.stem
                         })
                     
-                    logger.info(f"File uploaded: {file_path}")
+                    processed_files += 1
+                    logger.info(f"Loaded file: {file_path.name}")
                     
                 except Exception as e:
-                    logger.error(f"Error when uploading a file {file_path}: {e}")
+                    logger.error(f"Error loading file {file_path}: {e}")
         
-        logger.info(f"Total documents uploaded: {len(documents)}")
+        logger.info(f"Loaded {len(documents)} documents from {processed_files} files")
         return documents
     
     def split_documents(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         chunks = []
         
         for doc_idx, doc in enumerate(documents):
-            text_chunks = self.text_splitter.split_text(doc['content'])
-            
-            for chunk_idx, chunk_text in enumerate(text_chunks):
-                chunks.append({
-                    'content': chunk_text,
-                    'title': doc['title'],
-                    'source': doc['source'],
-                    'chunk_id': chunk_idx,
-                    'id': f"{doc_idx}_{chunk_idx}"
-                })
+            try:
+                text_chunks = self.text_splitter.split_text(doc['content'])
+                
+                for chunk_idx, chunk_text in enumerate(text_chunks):
+                    chunk_id = f"{doc_idx}_{chunk_idx}_{len(chunks)}"
+                    chunks.append({
+                        'content': chunk_text,
+                        'title': doc['title'],
+                        'source': doc['source'],
+                        'chunk_id': chunk_idx,
+                        'id': chunk_id
+                    })
+            except Exception as e:
+                logger.error(f"Error splitting document {doc_idx}: {e}")
         
-        logger.info(f"Created chunks: {len(chunks)}")
+        logger.info(f"Created {len(chunks)} chunks from {len(documents)} documents")
         return chunks
     
-    def embed_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]: 
-        texts = [chunk['content'] for chunk in chunks]
+    def embed_chunks(self, chunks): 
+        if not chunks:
+            return chunks
         
+        texts = [chunk['content'] for chunk in chunks]
         batch_size = 50
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
-            batch_embeddings = self.embeddings.embed_documents(batch_texts)
+        
+        try:
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i + batch_size]
+                batch_embeddings = self.embeddings.embed_documents(batch_texts)
+                
+                for j, embedding in enumerate(batch_embeddings):
+                    chunks[i + j]['content_vector'] = embedding
+                
+                logger.info(f"Generated embeddings: {min(i + batch_size, len(texts))}/{len(texts)}")
             
-            for j, embedding in enumerate(batch_embeddings):
-                chunks[i + j]['content_vector'] = embedding
-            
-            logger.info(f"Processed embeddings: {min(i + batch_size, len(texts))}/{len(texts)}")
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            raise
         
         return chunks
     
     def upload_to_azure_search(self, chunks: List[Dict[str, Any]]):
-       
         try:
             batch_size = 100
+            total_uploaded = 0
+            
             for i in range(0, len(chunks), batch_size):
                 batch = chunks[i:i + batch_size]
                 result = self.search_client.upload_documents(documents=batch)
                 
                 success_count = sum(1 for r in result if r.succeeded)
-                logger.info(f"Uploaded documents in the batch: {success_count}/{len(batch)}")
+                total_uploaded += success_count
+                
+                if success_count < len(batch):
+                    failed_count = len(batch) - success_count
+                    logger.warning(f"Batch {i//batch_size + 1}: {failed_count} documents failed to upload")
+                
+                logger.info(f"Uploaded batch {i//batch_size + 1}: {success_count}/{len(batch)} documents")
             
-            logger.info(f"All documents have been successfully uploaded to the index {self.index_name}")
+            logger.info(f"Total documents uploaded: {total_uploaded}/{len(chunks)}")
             
         except Exception as e:
-            logger.error(f"Error when uploading to Azure Search: {e}")
+            logger.error(f"Error uploading to Azure Search: {e}")
             raise
     
     def process_documents(self, documents_path: str):
         try:
+            logger.info(f"Starting document processing for path: {documents_path}")
             
             self.create_search_index()
             
             documents = self.load_documents(documents_path)
             if not documents:
-                logger.warning("No documents found")
-                return
+                logger.warning("No documents found to process")
+                return {"documents_count": 0, "chunks_count": 0}
             
             chunks = self.split_documents(documents)
+            if not chunks:
+                logger.warning("No chunks created from documents")
+                return {"documents_count": len(documents), "chunks_count": 0}
             
             chunks_with_embeddings = self.embed_chunks(chunks)
             
             self.upload_to_azure_search(chunks_with_embeddings)
             
-            self._save_processing_stats(len(documents), len(chunks))
+            logger.info("Document processing completed successfully")
             
         except Exception as e:
-            logger.error(f"Document processing error: {e}")
+            logger.error(f"Document processing failed: {e}")
             raise
     
-    def _save_processing_stats(self, doc_count: int, chunk_count: int):
-        stats = {
-            "processed_at": str(Path().cwd()),
-            "documents_count": doc_count,
-            "chunks_count": chunk_count,
-            "index_name": self.index_name
-        }
-        
-        os.makedirs("results", exist_ok=True)
-        with open("results/processing_stats.json", "w", encoding="utf-8") as f:
-            json.dump(stats, f, ensure_ascii=False, indent=2)
+DocumentUploader = EnhancedDocumentUploader
 
 def main():
+    """Main function for testing"""
     documents_folder = r"src\langchain_rag\docs"
     
     try:
-        uploader = DocumentUploader()
-        uploader.process_documents(documents_folder)
+        uploader = EnhancedDocumentUploader()
+        result = uploader.process_documents(documents_folder)
+        print(f"Processing completed: {result}")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
