@@ -9,3 +9,4 @@ azure-search-documents
 pytest
 pytest-cov
 requests
+streamlit
