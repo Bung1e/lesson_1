@@ -31,7 +31,6 @@ def upload_pdf_files(uploaded_files):
             with open(tmp_file_path, 'rb') as f:
                 files_data.append(('files', (uploaded_file.name, f.read(), 'application/pdf')))
             
-            # Clean up temp file
             os.unlink(tmp_file_path)
         
         response = requests.post(UPLOAD_ENDPOINT, files=files_data)

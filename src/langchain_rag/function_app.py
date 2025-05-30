@@ -59,7 +59,6 @@ def ask_rag(req: func.HttpRequest) -> func.HttpResponse:
         else: 
             question = req.params.get("question")
         
-        # Process question using RAG system
         rag = get_rag_system()
         result = rag.ask(question.strip())
         
@@ -94,13 +93,11 @@ def upload_documents(req: func.HttpRequest) -> func.HttpResponse:
     JSON response with upload status and processing results
     """
     try:
-        # Check if files are present in the request
         files = []
         for key, value in req.form.items():
             if key == 'files':
                 files.append(value)
         
-        # Also check files from request.files if available
         if hasattr(req, 'files'):
             for file_key in req.files:
                 files.extend(req.files.getlist(file_key))
