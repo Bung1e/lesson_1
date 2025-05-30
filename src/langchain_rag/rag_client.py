@@ -4,23 +4,68 @@ import tempfile
 import os
 from pathlib import Path
 import json
+import logging
+import sys
+import uuid 
+
+from opencensus.ext.azure.log_exporter import AzureLogHandler
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+handler = logging.StreamHandler(stream=sys.stdout)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+if os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING'):
+    azure_handler = AzureLogHandler()
+    logger.addHandler(azure_handler)
 
 AZURE_FUNCTION_ENDPOINT = "http://localhost:7071/api/ask"
 UPLOAD_ENDPOINT = "http://localhost:7071/api/upload" 
 
-def ask_rag_endpoint(question: str):
+def trigger_test_error():
+    trace_id = str(uuid.uuid4())
+    logger.info(f"trace_id={trace_id} Triggering test error")
     try:
+        response = requests.get(AZURE_FUNCTION_ENDPOINT + "?test_error=true")
+        response.raise_for_status() 
+    except requests.exceptions.RequestException as e:
+        logger.exception(f"trace_id={trace_id} Error triggering test error endpoint")
+        st.error(f"Error triggering test error: {str(e)}")
+        return 
+    
+    try:
+        response_data = response.json()
+        if response_data.get("status") == "error":
+             logger.error(f"trace_id={trace_id} Backend reported an error: {response_data.get("error", "Unknown error")}")
+             st.error(f"Backend reported an error: {response_data.get("error", "Unknown error")}")
+        else:
+            st.info("Test error endpoint called, check backend logs for details.")
+    except json.JSONDecodeError:
+         logger.error(f"trace_id={trace_id} Received non-JSON response from error endpoint")
+         st.error(f"Received non-JSON response from error endpoint: {response.text}")
+
+def ask_rag_endpoint(question: str):
+    trace_id = str(uuid.uuid4())
+    try:
+        logger.info(f"trace_id={trace_id} Sending question to backend: {question}")
         params = {"question": question}
         response = requests.get(AZURE_FUNCTION_ENDPOINT, params=params)
         response.raise_for_status()
         response_data = response.json()
+        logger.info(f"trace_id={trace_id} Received response from backend")
         return response_data.get("answer", "No answer received")
     except requests.exceptions.RequestException as e:
+        logger.exception(f"trace_id={trace_id} Error connecting to RAG service: {str(e)}")
         return f"Error connecting to RAG service: {str(e)}"
 
 def upload_pdf_files(uploaded_files):
-    """Upload PDF files to the server for processing"""
+    "Upload PDF files to the server for processing"
+    trace_id = str(uuid.uuid4())
     try:
+        logger.info(f"trace_id={trace_id} Attempting to upload {len(uploaded_files)} files")
         files_data = []
         
         for uploaded_file in uploaded_files:
@@ -33,14 +78,18 @@ def upload_pdf_files(uploaded_files):
             
             os.unlink(tmp_file_path)
         
+        logger.info(f"trace_id={trace_id} Sending upload request to backend")
         response = requests.post(UPLOAD_ENDPOINT, files=files_data)
         response.raise_for_status()
         
+        logger.info(f"trace_id={trace_id} Upload successful")
         return response.json()
     
     except requests.exceptions.RequestException as e:
+        logger.exception(f"trace_id={trace_id} Upload failed: {str(e)}")
         return {"error": f"Upload failed: {str(e)}"}
     except Exception as e:
+        logger.exception(f"trace_id={trace_id} Processing error: {str(e)}")
         return {"error": f"Processing error: {str(e)}"}
 
 st.set_page_config(
@@ -78,6 +127,10 @@ with st.sidebar:
                 if "processed_count" in result:
                     st.info(f"Processed {result['processed_count']} documents")
                 st.rerun() 
+                
+    st.divider()
+    if st.button("🔥 Test Error", help="Click to test error monitoring"):
+        trigger_test_error()
 
 # Initialize chat history
 if "messages" not in st.session_state:

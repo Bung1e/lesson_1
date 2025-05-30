@@ -18,3 +18,5 @@ python-docx
 docx2txt
 unstructured
 unstructured[md]
+opencensus
+opencensus-ext-azure

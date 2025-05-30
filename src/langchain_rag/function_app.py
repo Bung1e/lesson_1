@@ -7,28 +7,37 @@ from datetime import datetime
 from pathlib import Path
 from main import SimpleTravelRAG
 from docs_to_storage import DocumentUploader
+import uuid
+
+from opencensus.ext.azure.log_exporter import AzureLogHandler
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING'):
+    handler = AzureLogHandler()
+    logger.addHandler(handler)
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 rag_system = None
 document_uploader = None
 
 def get_rag_system():
-    """Get or create RAG system instance"""
     global rag_system
     if rag_system is None:
         rag_system = SimpleTravelRAG()
     return rag_system
 
 def get_document_uploader():
-    """Get or create document uploader instance"""
     global document_uploader
     if document_uploader is None:
         document_uploader = DocumentUploader()
     return document_uploader
+
+def raise_error():
+    logger.error("Intentional test error raised for Application Insights monitoring")
+    raise ValueError("This is a test error for Application Insights - check your monitoring!")
 
 @app.function_name(name="ask_rag")
 @app.route(route="ask", methods=["POST", "GET"])
@@ -43,7 +52,12 @@ def ask_rag(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
     JSON response with answer and metadata
     """
+
+    trace_id = str(uuid.uuid4())
+
     try:
+        logger.info(f"trace_id={trace_id} Processing request")
+
         question = None
         
         if req.method == "POST":
@@ -58,6 +72,9 @@ def ask_rag(req: func.HttpRequest) -> func.HttpResponse:
                 )
         else: 
             question = req.params.get("question")
+
+            if req.params.get("test_error") == "true":
+                raise_error()
         
         rag = get_rag_system()
         result = rag.ask(question.strip())
@@ -69,7 +86,7 @@ def ask_rag(req: func.HttpRequest) -> func.HttpResponse:
         )
         
     except Exception as e:
-        logger.error(f"Error in ask_rag: {str(e)}")
+        logger.exception(f"trace_id={trace_id} Error in ask_rag: {str(e)}")
         return func.HttpResponse(
             json.dumps({
                 "error": f"Internal error: {str(e)}",
@@ -92,7 +109,12 @@ def upload_documents(req: func.HttpRequest) -> func.HttpResponse:
     Returns:
     JSON response with upload status and processing results
     """
+
+    trace_id = str(uuid.uuid4())
+
     try:
+        logger.info(f"trace_id={trace_id} Starting document upload")
+
         files = []
         for key, value in req.form.items():
             if key == 'files':
@@ -178,7 +200,7 @@ def upload_documents(req: func.HttpRequest) -> func.HttpResponse:
                 logger.warning(f"Failed to clean up temp directory: {cleanup_error}")
         
     except Exception as e:
-        logger.error(f"Error in upload_documents: {str(e)}")
+        logger.exception(f"trace_id={trace_id} Error in upload_documents: {str(e)}")
         return func.HttpResponse(
             json.dumps({
                 "error": f"Upload processing failed: {str(e)}",
