@@ -77,7 +77,7 @@ with st.sidebar:
                 st.success("Files uploaded successfully!")
                 if "processed_count" in result:
                     st.info(f"Processed {result['processed_count']} documents")
-                st.rerun()  # Refresh the app
+                st.rerun() 
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -93,14 +93,11 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("Ask a question..."):
-    # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Display user message
+
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Get and display assistant response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             answer = ask_rag_endpoint(prompt)
